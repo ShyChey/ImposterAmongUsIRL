@@ -40,8 +40,8 @@ export default function PlayerMap({ player }: { player: any }) {
   const [emergencyTarget, setEmergencyTarget] = useState<any | null>(null)
   const [killCooldown, setKillCooldown] = useState(0)
 
-  const centerLat = 40.7608
-  const centerLng = -111.8910
+  const centerLat = 40.766188
+  const centerLng = -111.866754
 
   const mapCenter = currentLocation 
     ? [currentLocation.lat, currentLocation.lng] 
