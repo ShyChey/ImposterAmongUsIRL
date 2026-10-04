@@ -79,6 +79,14 @@ export default function Home() {
     await supabase.from('game_state').update({ status: 'playing' }).eq('id', 1)
   }
 
+  const restartGame = async () => {
+  // 1. Flip game state back to lobby
+  await supabase.from('game_state').update({ status: 'lobby' }).eq('id', 1)
+
+  // 2. Reset all players to default crewmate status
+  await supabase.from('players').update({ role: 'crewmate', status: 'alive' }).neq('id', '00000000-0000-0000-0000-000000000000')
+}
+
   // 1. Login Screen if player hasn't joined yet
   if (!player) {
     return (
@@ -136,6 +144,13 @@ export default function Home() {
                 className="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold tracking-wide"
               >
                 📍 Setup Task & Emergency Pins (Host Map)
+              </button>
+
+              <button
+                onClick={restartGame}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-xl font-bold text-xs uppercase tracking-wider transition shadow"
+              >
+              🔄 Restart Game
               </button>
 
               <button
