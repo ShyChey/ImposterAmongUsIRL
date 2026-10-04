@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { createClient } from '@/utils/supabase/client'
+import { TASK_TYPES } from '@/components/TaskMinigame'
 
 function MapInvalidator() {
   const map = useMap()
@@ -34,6 +35,7 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
   const [tasks, setTasks] = useState<any[]>([])
   const [emergencies, setEmergencies] = useState<any[]>([])
   const [monitors, setMonitors] = useState<any[]>([])
+  const [taskType, setTaskType] = useState<string>(TASK_TYPES[0])
 
   const centerLat = 40.766188
   const centerLng = -111.866754
@@ -55,7 +57,7 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
     useMapEvents({
       async click(e) {
         const { lat, lng } = e.latlng
-        const title = prompt(`Enter name for this ${markerType}:`)
+        const title = markerType === 'task' ? taskType : prompt(`Enter name for this ${markerType}:`)
         if (!title) return
 
         if (markerType === 'task') {
@@ -93,6 +95,9 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
             <option value="emergency">🔴 Red Emergency Button</option>
             <option value="monitor">🔵 Blue Monitor</option>
           </select>
+          {markerType === 'task' && <select value={taskType} onChange={(e) => setTaskType(e.target.value)} className="p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white">
+            {TASK_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+          </select>}
           <button onClick={onClose} className="px-4 py-2.5 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-bold transition">
             Done / Close
           </button>

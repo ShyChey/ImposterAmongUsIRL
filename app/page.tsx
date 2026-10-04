@@ -1,271 +1,33 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { createClient } from '@/utils/supabase/client'
+const HostMap=dynamic(()=>import('@/components/HostMap'),{ssr:false}); const PlayerMap=dynamic(()=>import('@/components/PlayerMap'),{ssr:false})
 
-const HostMap = dynamic(() => import('@/components/HostMap'), { ssr: false })
-const PlayerMap = dynamic(() => import('@/components/PlayerMap'), { ssr: false })
+function Meeting({ player, state, players, refresh }: any) {
+  const supabase=createClient(); const [votes,setVotes]=useState<any[]>([]); const [seconds,setSeconds]=useState(0)
+  const getVotes=async()=>{const {data}=await supabase.from('meeting_votes').select('*');setVotes(data||[])}
+  useEffect(()=>{getVotes();const c=supabase.channel('votes').on('postgres_changes',{event:'*',schema:'public',table:'meeting_votes'},getVotes).subscribe();return()=>{ void supabase.removeChannel(c) }},[])
+  useEffect(()=>{const tick=()=>setSeconds(Math.max(0,Math.ceil((new Date(state.meeting_ends_at).getTime()-Date.now())/1000)));tick();const t=setInterval(tick,500);return()=>clearInterval(t)},[state.meeting_ends_at])
+  const vote=async(target:string|null)=>{if(player.status!=='alive')return;await supabase.from('meeting_votes').upsert({voter_id:player.id,target_id:target},{onConflict:'voter_id'});getVotes()}
+  const mine=votes.find(v=>v.voter_id===player.id); const alive=players.filter((p:any)=>p.status==='alive')
+  const finish=async()=>{ if(state.status!=='meeting')return; const counts=new Map<string,number>(); votes.forEach(v=>counts.set(v.target_id||'skip',(counts.get(v.target_id||'skip')||0)+1)); let winner='skip',high=0,tie=false; counts.forEach((n,id)=>{if(n>high){winner=id;high=n;tie=false}else if(n===high)tie=true}); const ejected=!tie&&winner!=='skip'?players.find((p:any)=>p.id===winner):null; if(ejected) await supabase.from('players').update({status:'dead'}).eq('id',ejected.id); await supabase.from('meeting_votes').delete().neq('id','00000000-0000-0000-0000-000000000000'); await supabase.from('game_state').update({status:'playing',meeting_called_by:null,meeting_ends_at:null,last_ejection_name:ejected?.name||'No one',last_ejection_role:ejected?.role||null}).eq('id',1); refresh() }
+  useEffect(()=>{if(seconds===0&&state.meeting_ends_at)finish()},[seconds])
+  return <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/95 p-5"><div className="w-full max-w-lg space-y-5 rounded-3xl border border-red-500 bg-slate-900 p-6 text-center shadow-2xl"><p className="font-black tracking-[.25em] text-red-500">EMERGENCY MEETING</p><h2 className="text-3xl font-black">Discuss, then vote</h2>{state.discord_url&&<a href={state.discord_url} target="_blank" className="block rounded-2xl bg-indigo-600 py-3 font-bold">Join Discord voice chat ↗</a>}<p className="text-sm text-slate-400">Voting ends in <b className="text-amber-400">{seconds}s</b>. The game is paused.</p><div className="grid gap-2">{alive.map((p:any)=><button key={p.id} disabled={player.status!=='alive'} onClick={()=>vote(p.id)} className={`rounded-xl border p-3 text-left font-bold ${mine?.target_id===p.id?'border-amber-400 bg-amber-400/15':'border-slate-700 bg-slate-800'}`}>{p.name}</button>)}<button disabled={player.status!=='alive'} onClick={()=>vote(null)} className={`rounded-xl border p-3 font-bold ${mine?.target_id===null?'border-amber-400 bg-amber-400/15':'border-slate-700'}`}>SKIP VOTE</button></div>{player.is_host&&<button onClick={finish} className="text-xs font-bold text-slate-400 underline">Host: end voting now</button>}</div></div>
+}
 
-export default function Home() {
-  const supabase = createClient()
-  const [player, setPlayer] = useState<any>(null)
-  const [nameInput, setNameInput] = useState('')
-  const [gameState, setGameState] = useState<any>(null)
-  const [playersList, setPlayersList] = useState<any[]>([])
-  const [showHostMap, setShowHostMap] = useState(false)
-  const [imposterCount, setImposterCount] = useState(1)
-
-  useEffect(() => {
-    fetchGameState()
-
-    const channel = supabase
-      .channel('lobby-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
-        setGameState(payload.new)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => {
-        fetchPlayers()
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
-
-  // Whenever the game state shifts to playing, re-fetch the current player's data to get their assigned role!
-  useEffect(() => {
-    if (gameState?.status === 'playing' && player) {
-      const refreshMyRole = async () => {
-        const { data } = await supabase.from('players').select('*').eq('id', player.id).single()
-        if (data) {
-          setPlayer(data)
-        }
-      }
-      refreshMyRole()
-    }
-  }, [gameState?.status])
-
-  const fetchGameState = async () => {
-    let { data } = await supabase.from('game_state').select('*').eq('id', 1).single()
-    if (!data) {
-      const { data: newData } = await supabase.from('game_state').insert([{ id: 1, status: 'lobby' }]).select().single()
-      data = newData
-    }
-    setGameState(data)
-    fetchPlayers()
-  }
-
-  const fetchPlayers = async () => {
-    const { data } = await supabase.from('players').select('*')
-    if (data) {
-      setPlayersList(data)
-      // If player is logged in, update their local reference too
-      if (player) {
-        const me = data.find((p) => p.id === player.id)
-        if (me) setPlayer(me)
-      }
-    }
-  }
-
-  const joinGame = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!nameInput.trim()) return
-
-    const isFirstPlayer = playersList.length === 0
-
-    const { data, error } = await supabase.from('players').insert([
-      { name: nameInput, role: null, status: 'alive', is_host: isFirstPlayer }
-    ]).select().single()
-
-    if (data) {
-      setPlayer(data)
-    }
-  }
-
-  const resetDatabase = async () => {
-    if (!confirm("Are you sure you want to wipe all players and reset the entire game?")) return
-    await supabase.from('players').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    await supabase.from('player_tasks').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    await supabase.from('game_state').update({ status: 'lobby' }).eq('id', 1)
-    setPlayer(null)
-  }
-
-  const startGame = async () => {
-    const { data: currentPlayers } = await supabase.from('players').select('*')
-    if (!currentPlayers || currentPlayers.length === 0) return
-
-    const { data: templates } = await supabase.from('task_templates').select('*')
-    
-    // 1. Shuffle players & assign roles in memory first
-    const shuffled = [...currentPlayers].sort(() => 0.5 - Math.random())
-    const count = Math.min(imposterCount, Math.max(1, shuffled.length - 1))
-
-    // Prepare all task inserts and player role updates to run concurrently
-    const playerUpdatePromises = shuffled.map(async (p, i) => {
-      const assignedRole = i < count ? 'imposter' : 'crewmate'
-
-      // Update player role
-      await supabase.from('players').update({ role: assignedRole }).eq('id', p.id)
-
-      // If crewmate, batch-insert all tasks at once instead of one by one
-      if (assignedRole === 'crewmate' && templates && templates.length > 0) {
-        const shuffledTemplates = [...templates].sort(() => 0.5 - Math.random())
-        const assignedSubset = shuffledTemplates.slice(0, Math.min(5, shuffledTemplates.length))
-
-        const taskRows = assignedSubset.map((t) => ({
-          player_id: p.id,
-          title: t.title,
-          lat: t.lat,
-          lng: t.lng,
-          is_completed: false,
-        }))
-
-        if (taskRows.length > 0) {
-          await supabase.from('player_tasks').insert(taskRows)
-        }
-      }
-    })
-
-    // Execute all player initializations simultaneously
-    await Promise.all(playerUpdatePromises)
-
-    // Finally, flip game state to playing all at once
-    await supabase.from('game_state').update({ status: 'playing' }).eq('id', 1)
-  }
-
-  const restartGame = async () => {
-    await supabase.from('player_tasks').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    await supabase.from('players').update({ role: null, status: 'alive' }).neq('id', '00000000-0000-0000-0000-000000000000')
-    await supabase.from('game_state').update({ status: 'lobby' }).eq('id', 1)
-  }
-
-  // 1. Login Screen
-  if (!player) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-950 text-white">
-        <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl space-y-6">
-          <h1 className="text-3xl font-black text-center text-red-500 tracking-wider">IRL AMONG US</h1>
-          <form onSubmit={joinGame} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Your Agent Name</label>
-              <input
-                type="text"
-                value={nameInput}
-                onChange={(e) => setNameInput(e.target.value)}
-                placeholder="e.g. RedSus"
-                className="w-full p-4 rounded-2xl bg-slate-800 border border-slate-700 text-white font-bold focus:outline-none focus:border-red-500"
-                required
-              />
-            </div>
-            <button type="submit" className="w-full py-4 bg-red-600 hover:bg-red-500 rounded-2xl font-black text-lg tracking-wider shadow-lg transition">
-              JOIN LOBBY
-            </button>
-          </form>
-        </div>
-      </main>
-    )
-  }
-
-  // 2. Lobby Waiting Room
-  if (gameState?.status === 'lobby') {
-    return (
-      <main className="flex min-h-screen flex-col items-center p-6 bg-slate-950 text-white">
-        <div className="w-full max-w-xl bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-6 mt-10 shadow-2xl">
-          <div className="text-center space-y-2">
-            <h1 className="text-2xl font-black text-amber-500">🎮 GAME LOBBY</h1>
-            <p className="text-sm text-slate-400">Waiting for the host to start the game...</p>
-          </div>
-
-          <div className="space-y-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Joined Players ({playersList.length})</h2>
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2 max-h-48 overflow-y-auto">
-              {playersList.map((p) => (
-                <div key={p.id} className="flex justify-between items-center text-sm font-semibold">
-                  <span>{p.name} {p.is_host && '👑 (Host)'}</span>
-                  <span className="text-xs text-emerald-400">Ready</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Host Controls */}
-          {player.is_host ? (
-            <div className="space-y-4 pt-4 border-t border-slate-800">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Number of Imposters</label>
-                <select
-                  value={imposterCount}
-                  onChange={(e) => setImposterCount(Number(e.target.value))}
-                  className="w-full p-3.5 rounded-2xl bg-slate-800 border border-slate-700 text-white font-bold focus:outline-none focus:border-amber-500"
-                >
-                  <option value={1}>1 Imposter</option>
-                  <option value={2}>2 Imposters</option>
-                  <option value={3}>3 Imposters</option>
-                </select>
-              </div>
-
-              <button
-                onClick={() => setShowHostMap(true)}
-                className="w-full py-3.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl font-bold tracking-wide transition"
-              >
-                📍 Setup Task Templates & Zones (Host Map)
-              </button>
-
-              <button
-                onClick={startGame}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-lg tracking-wider shadow-lg transition"
-              >
-                🚀 START GAME
-              </button>
-
-              <button
-                onClick={resetDatabase}
-                className="w-full py-3 bg-red-950/50 hover:bg-red-900 border border-red-800 rounded-2xl font-bold text-xs uppercase tracking-wider transition text-red-200"
-              >
-                🔥 WIPE & RESET DATABASE
-              </button>
-            </div>
-          ) : (
-            <div className="text-center p-4 bg-slate-950 rounded-2xl border border-slate-800 text-sm text-slate-400">
-              Waiting for host to configure settings and launch the match...
-            </div>
-          )}
-        </div>
-
-        {showHostMap && <HostMap onClose={() => setShowHostMap(false)} />}
-      </main>
-    )
-  }
-
-  // 3. Active Gameplay Screen
-  return (
-    <main className="flex min-h-screen flex-col items-center p-4 bg-slate-950 text-white">
-      <div className="w-full max-w-xl space-y-4">
-        <header className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-xl">
-          <div>
-            <h1 className="font-black text-lg">{player.name}</h1>
-            <p className="text-xs text-slate-400 uppercase tracking-wider">
-              Role: <span className={player.role === 'imposter' ? 'text-red-500 font-black text-sm' : 'text-emerald-400 font-black text-sm'}>{player.role || 'Unassigned'}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="px-3 py-1 bg-slate-800 rounded-full text-xs font-bold uppercase">
-              {player.status}
-            </div>
-            {player.is_host && (
-              <button
-                onClick={restartGame}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-xl font-bold text-xs uppercase tracking-wider transition shadow"
-              >
-                🔄 Restart
-              </button>
-            )}
-          </div>
-        </header>
-
-        <PlayerMap player={player} />
-      </div>
-    </main>
-  )
+export default function Home(){
+ const supabase=createClient();const [player,setPlayer]=useState<any>(null),[name,setName]=useState(''),[state,setState]=useState<any>(null),[players,setPlayers]=useState<any[]>([]),[hostMap,setHostMap]=useState(false),[imposters,setImposters]=useState(1),[discord,setDiscord]=useState(''),[notice,setNotice]=useState('')
+ const refresh=async()=>{let {data:s}=await supabase.from('game_state').select('*').eq('id',1).single();if(!s){const {data}=await supabase.from('game_state').insert({id:1,status:'lobby'}).select().single();s=data}setState(s);const {data:p}=await supabase.from('players').select('*').order('name');setPlayers(p||[]);const saved=localStorage.getItem('among-us-player');if(saved&&!player){const me=(p||[]).find((x:any)=>x.id===saved);if(me)setPlayer(me)}}
+ useEffect(()=>{refresh();const c=supabase.channel('lobby').on('postgres_changes',{event:'*',schema:'public',table:'game_state'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'players'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'player_tasks'},()=>{refresh();checkWin()}).subscribe();return()=>{ void supabase.removeChannel(c) }},[])
+ useEffect(()=>{if(state?.status==='playing')checkWin()},[state?.status,players.length])
+ const checkWin=async()=>{const {data:p}=await supabase.from('players').select('*');if(!p||p.length<2)return;const alive=p.filter(x=>x.status==='alive'),imps=alive.filter(x=>x.role==='imposter'),crew=alive.filter(x=>x.role==='crewmate');const {data:t}=await supabase.from('player_tasks').select('is_completed');let winner='';if(!imps.length)winner='crewmates';else if(imps.length>=crew.length)winner='imposters';else if(t?.length&&t.every(x=>x.is_completed))winner='crewmates';if(winner)await supabase.from('game_state').update({status:'ended',winner}).eq('id',1)}
+ const join=async(e:any)=>{e.preventDefault();const clean=name.trim();if(!clean)return;const existing=players.find(p=>p.name===clean);if(existing){await supabase.from('players').update({disconnected_at:null}).eq('id',existing.id);localStorage.setItem('among-us-player',existing.id);setPlayer({...existing,disconnected_at:null});setNotice(`Reconnected as ${existing.name}.`);return}const {data,error}=await supabase.from('players').insert({name:clean,role:null,status:'alive',is_host:players.length===0}).select().single();if(error){setNotice('That name is already in use. Choose a different name.');return}localStorage.setItem('among-us-player',data.id);setPlayer(data)}
+ const disconnect=async()=>{if(player)await supabase.from('players').update({disconnected_at:new Date().toISOString()}).eq('id',player.id);localStorage.removeItem('among-us-player');setPlayer(null);setNotice('Disconnected from this browser. Enter the same exact name to reconnect.')}
+ const start=async()=>{const {data:p}=await supabase.from('players').select('*');const {data:templates}=await supabase.from('task_templates').select('*');if(!p?.length)return;await supabase.from('player_tasks').delete().neq('id','00000000-0000-0000-0000-000000000000');const shuffled=[...p].sort(()=>Math.random()-.5),n=Math.min(imposters,Math.max(1,p.length-1));await Promise.all(shuffled.map(async(x,i)=>{const role=i<n?'imposter':'crewmate';await supabase.from('players').update({role,status:'alive'}).eq('id',x.id);if(role==='crewmate'&&templates?.length){const tasks=[...templates].sort(()=>Math.random()-.5).slice(0,Math.min(5,templates.length)).map(t=>({player_id:x.id,title:t.title,lat:t.lat,lng:t.lng,is_completed:false}));await supabase.from('player_tasks').insert(tasks)}}));await supabase.from('game_state').update({status:'playing',winner:null,discord_url:discord||null,last_ejection_name:null}).eq('id',1)}
+ const emergency=async(button:any)=>{if(state?.status!=='playing')return;await supabase.from('meeting_votes').delete().neq('id','00000000-0000-0000-0000-000000000000');await supabase.from('game_state').update({status:'meeting',meeting_called_by:player.id,meeting_ends_at:new Date(Date.now()+60000).toISOString()}).eq('id',1)}
+ const restart=async()=>{await supabase.from('player_tasks').delete().neq('id','00000000-0000-0000-0000-000000000000');await supabase.from('players').update({role:null,status:'alive'}).neq('id','00000000-0000-0000-0000-000000000000');await supabase.from('game_state').update({status:'lobby',winner:null,meeting_ends_at:null}).eq('id',1)}
+ if(!player)return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-white"><form onSubmit={join} className="w-full max-w-md space-y-4 rounded-3xl border border-slate-800 bg-slate-900 p-8"><h1 className="text-center text-3xl font-black text-red-500">IRL AMONG US</h1><p className="text-sm text-slate-400">Use your exact existing name on a new tab/device to reconnect.</p>{notice&&<p className="text-sm text-amber-300">{notice}</p>}<input value={name} onChange={e=>setName(e.target.value)} placeholder="Your unique player name" className="w-full rounded-2xl border border-slate-700 bg-slate-800 p-4 font-bold" required/><button className="w-full rounded-2xl bg-red-600 py-4 font-black">JOIN / RECONNECT</button></form></main>
+ if(state?.status==='lobby')return <main className="min-h-screen bg-slate-950 p-6 text-white"><div className="mx-auto max-w-xl space-y-5 rounded-3xl border border-slate-800 bg-slate-900 p-6"><div className="flex justify-between"><h1 className="text-2xl font-black text-amber-400">GAME LOBBY</h1><button onClick={disconnect} className="text-sm font-bold text-slate-400">Disconnect</button></div><div className="rounded-2xl bg-slate-950 p-4">{players.map(p=><p key={p.id} className="py-1 font-bold">{p.name} {p.is_host&&'👑'}</p>)}</div>{player.is_host?<div className="space-y-3 border-t border-slate-800 pt-4"><select value={imposters} onChange={e=>setImposters(+e.target.value)} className="w-full rounded-xl bg-slate-800 p-3">{[1,2,3].map(n=><option key={n} value={n}>{n} imposters</option>)}</select><input value={discord} onChange={e=>setDiscord(e.target.value)} placeholder="Optional Discord invite URL" className="w-full rounded-xl bg-slate-800 p-3"/><button onClick={()=>setHostMap(true)} className="w-full rounded-xl bg-slate-700 py-3 font-bold">Set up map markers & task types</button><button onClick={start} className="w-full rounded-xl bg-emerald-600 py-4 font-black">START GAME</button></div>:<p className="text-center text-slate-400">Waiting for the host…</p>}</div>{hostMap&&<HostMap onClose={()=>setHostMap(false)}/>}</main>
+ return <main className="min-h-screen bg-slate-950 p-4 text-white"><div className="mx-auto max-w-xl space-y-4"><header className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 p-4"><div><b>{player.name}</b><p className={player.role==='imposter'?'text-sm font-black text-red-400':'text-sm font-black text-emerald-400'}>{player.role}</p></div><div className="flex gap-2">{player.is_host&&<button onClick={restart} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold">Restart</button>}<button onClick={disconnect} className="text-xs font-bold text-slate-400">Disconnect</button></div></header>{state?.status==='ended'?<div className="rounded-3xl border border-amber-400 bg-amber-400/10 p-10 text-center"><h2 className="text-3xl font-black text-amber-400">{state.winner?.toUpperCase()} WIN!</h2><p className="mt-3">{state.last_ejection_name&&`${state.last_ejection_name} was ${state.last_ejection_role||'not an imposter'}.`}</p></div>:<PlayerMap player={player} gameState={state} onEmergency={emergency}/>}</div>{state?.status==='meeting'&&<Meeting player={player} state={state} players={players} refresh={refresh}/>}</main>
 }
