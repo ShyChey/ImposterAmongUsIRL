@@ -1,13 +1,13 @@
 // @ts-nocheck
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { createClient } from '@/utils/supabase/client'
 import TaskMinigame from '@/components/TaskMinigame'
 
 function MapInvalidator() { const map = useMap(); useEffect(() => { const t = setTimeout(() => map.invalidateSize(), 100); return () => clearTimeout(t) }, [map]); return null }
-function FollowPlayer({ coords }: { coords:any }) { const map=useMap(); useEffect(()=>{if(coords) map.setView([coords.lat,coords.lng],17,{animate:true})},[coords, map]); return null }
+function FollowPlayer({ coords }: { coords:any }) { const map=useMap(), followed=useRef(false); useEffect(()=>{if(coords&&!followed.current){map.setView([coords.lat,coords.lng],17,{animate:true});followed.current=true}},[coords, map]); return null }
 const icon = (color: string) => L.divIcon({ className: 'custom-icon', html: `<div style="background:${color};width:22px;height:22px;border-radius:50%;border:2px solid white"></div>`, iconSize:[22,22], iconAnchor:[11,11] })
 const selfIcon=icon('#38bdf8'), playerIcon=icon('#94a3b8'), greenIcon=icon('#22c55e'), redIcon=icon('#ef4444'), blueIcon=icon('#3b82f6')
 const distance = (a:number,b:number,c:number,d:number) => { const R=3958.8, x=(c-a)*Math.PI/180, y=(d-b)*Math.PI/180, z=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2; return R*2*Math.atan2(Math.sqrt(z),Math.sqrt(1-z))*5280 }
@@ -15,6 +15,7 @@ const distance = (a:number,b:number,c:number,d:number) => { const R=3958.8, x=(c
 export default function PlayerMap({ player, gameState, onEmergency }: { player:any; gameState:any; onEmergency:(button:any)=>void }) {
   const supabase=createClient(); const [coords,setCoords]=useState<any>(null); const [players,setPlayers]=useState<any[]>([]); const [tasks,setTasks]=useState<any[]>([]); const [emergencies,setEmergencies]=useState<any[]>([]); const [monitors,setMonitors]=useState<any[]>([]); const [activeTask,setActiveTask]=useState<any>(null)
   const center=[40.766188,-111.866754]
+  const venueBounds=[[center[0]-.008,center[1]-.008],[center[0]+.008,center[1]+.008]] as any
   const refresh=async()=>{ const [{data:p},{data:t},{data:e},{data:m}]=await Promise.all([supabase.from('players').select('*'),supabase.from('player_tasks').select('*').eq('player_id',player.id),supabase.from('emergency_buttons').select('*'),supabase.from('monitors').select('*')]); setPlayers(p||[]);setTasks(t||[]);setEmergencies(e||[]);setMonitors(m||[]) }
   useEffect(()=>{ refresh(); const channel=supabase.channel(`game-${player.id}`).on('postgres_changes',{event:'*',schema:'public',table:'players'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'player_tasks'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'emergency_buttons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'monitors'},refresh).subscribe(); return()=>supabase.removeChannel(channel) },[])
   useEffect(()=>{ if(!navigator.geolocation) return; const watcher=navigator.geolocation.watchPosition(async pos=>{const next={lat:pos.coords.latitude,lng:pos.coords.longitude};setCoords(next);await supabase.from('players').update(next).eq('id',player.id)},console.error,{enableHighAccuracy:true,timeout:10000,maximumAge:1000}); return()=>navigator.geolocation.clearWatch(watcher) },[player.id])
@@ -30,7 +31,7 @@ export default function PlayerMap({ player, gameState, onEmergency }: { player:a
     </div>
     <div className={`rounded-2xl border p-3 text-center text-xs font-bold ${nearMonitor?'border-blue-500 bg-blue-950 text-blue-200':'border-slate-800 bg-slate-900 text-slate-400'}`}>{nearMonitor?'MONITOR ACTIVE — live locations visible':'Monitor locked — move within 20 ft of a monitor'}</div>
     {player.status !== 'alive' && <div className="rounded-2xl bg-slate-800 p-4 text-center font-bold text-slate-300">You were ejected. You can watch, but cannot interact.</div>}
-    <div className="aspect-square w-full overflow-hidden rounded-3xl border-2 border-slate-800"><MapContainer center={coords?[coords.lat,coords.lng]:center as any} zoom={17} minZoom={16} maxZoom={19} style={{height:'100%',width:'100%'}} dragging={false} touchZoom={false} scrollWheelZoom={false} zoomControl={false}><MapInvalidator/><FollowPlayer coords={coords}/><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
+    <div className="aspect-square w-full overflow-hidden rounded-3xl border-2 border-slate-800"><MapContainer center={coords?[coords.lat,coords.lng]:center as any} zoom={17} minZoom={16} maxZoom={19} maxBounds={venueBounds} maxBoundsViscosity={1} style={{height:'100%',width:'100%'}} dragging touchZoom scrollWheelZoom zoomControl={false}><MapInvalidator/><FollowPlayer coords={coords}/><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
       {coords&&<Marker position={[coords.lat,coords.lng]} icon={selfIcon}><Popup>You ({player.name})</Popup></Marker>}
       {nearMonitor&&players.filter(p=>p.id!==player.id&&p.status==='alive'&&p.lat&&p.lng).map(p=><Marker key={p.id} position={[p.lat,p.lng]} icon={playerIcon}><Popup>{p.name}</Popup></Marker>)}
       {emergencies.map(e=><Marker key={e.id} position={[e.lat,e.lng]} icon={redIcon}><Popup>🚨 {e.title}</Popup></Marker>)}
