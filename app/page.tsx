@@ -19,15 +19,19 @@ export default function Home() {
   useEffect(() => {
     fetchGameState()
 
-    const channel = supabase
-      .channel('lobby-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
-        setGameState(payload.new)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => {
-        fetchPlayers()
-      })
-      .subscribe()
+  const channel = supabase
+        .channel('lobby-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
+          setGameState(payload.new)
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, (payload) => {
+          fetchPlayers()
+          // If the update applies to the currently logged-in player, update local player state!
+          if (player && payload.new && (payload.new as any).id === player.id) {
+            setPlayer(payload.new)
+          }
+        })
+        .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
@@ -66,17 +70,13 @@ export default function Home() {
   }
 
   const startGame = async () => {
-    // Fetch latest fresh players list directly from database to ensure no stale state
     const { data: currentPlayers } = await supabase.from('players').select('*')
     if (!currentPlayers || currentPlayers.length === 0) return
 
-    // Shuffle players randomly
     const shuffled = [...currentPlayers].sort(() => 0.5 - Math.random())
-    
-    // Ensure imposter count is valid
     const count = Math.min(imposterCount, Math.max(1, shuffled.length - 1))
 
-    // Assign roles in Supabase
+    // Assign roles in Supabase database
     for (let i = 0; i < shuffled.length; i++) {
       const assignedRole = i < count ? 'imposter' : 'crewmate'
       await supabase
@@ -85,7 +85,7 @@ export default function Home() {
         .eq('id', shuffled[i].id)
     }
 
-    // Flip global game state to playing
+    // Flip game state to playing
     await supabase.from('game_state').update({ status: 'playing' }).eq('id', 1)
   }
 

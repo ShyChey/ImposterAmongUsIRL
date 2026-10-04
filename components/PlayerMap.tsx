@@ -59,28 +59,29 @@ export default function PlayerMap({ player }: { player: any }) {
   const centerLat = 40.766188
   const centerLng = -111.86675
   const venueBounds = [
-    [centerLat - 0.005, centerLng - 0.005], 
-    [centerLat + 0.005, centerLng + 0.005]
+    [centerLat - 0.008, centerLng - 0.008], 
+    [centerLat + 0.008, centerLng + 0.008]
   ] as [[number, number], [number, number]]
 
   useEffect(() => {
     // 1. Watch GPS location
     if ('geolocation' in navigator) {
-      const watcher = navigator.geolocation.watchPosition(
+        const watcher = navigator.geolocation.watchPosition(
         async (position) => {
-          const lat = position.coords.latitude
-          const lng = position.coords.longitude
-          setCoords({ lat, lng })
+            const lat = position.coords.latitude
+            const lng = position.coords.longitude
+            setCoords({ lat, lng })
 
-          // Update location in Supabase
-          await supabase.from('players').update({ lat, lng }).eq('id', player.id)
-
-          // Check proximity to monitors (within 20 feet)
-          checkMonitors(lat, lng)
+            await supabase.from('players').update({ lat, lng }).eq('id', player.id)
+            checkMonitors(lat, lng)
         },
-        (error) => console.error(error),
-        { enableHighAccuracy: true }
-      )
+        (error) => console.error("GPS Error:", error),
+        { 
+            enableHighAccuracy: true,  // Forces GPS chip instead of Wi-Fi triangulation
+            timeout: 10000,            // Max time to wait for a reading
+            maximumAge: 0              // Disables cached locations; forces fresh fix every tick
+        }
+        )
       return () => navigator.geolocation.clearWatch(watcher)
     }
   }, [])
@@ -151,7 +152,7 @@ export default function PlayerMap({ player }: { player: any }) {
       </div>
 
       {/* Locked, secure, boundary-restricted map */}
-      <div className="h-[550px] w-full rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl relative z-0">
+      <div className="h-[650px] w-full rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl relative z-0">
         <MapContainer 
           center={mapCenter as any} 
           zoom={18} 
