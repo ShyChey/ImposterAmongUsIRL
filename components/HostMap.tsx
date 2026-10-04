@@ -1,10 +1,21 @@
+// @ts-nocheck
 'use client'
 import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { createClient } from '@/utils/supabase/client'
 
-// Custom marker icons using colored SVGs or div icons
+function MapInvalidator() {
+  const map = useMap()
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      map.invalidateSize()
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [map])
+  return null
+}
+
 const createTaskIcon = (color: string) =>
   L.divIcon({
     className: 'custom-icon',
@@ -13,8 +24,8 @@ const createTaskIcon = (color: string) =>
     iconAnchor: [12, 12],
   })
 
-const greenIcon = createTaskIcon('#22c55e') // Tasks
-const redIcon = createTaskIcon('#ef4444')   // Emergency
+const greenIcon = createTaskIcon('#22c55e') // Task Templates
+const redIcon = createTaskIcon('#ef4444')   // Emergency Buttons
 const blueIcon = createTaskIcon('#3b82f6')  // Monitors
 
 export default function HostMap({ onClose }: { onClose: () => void }) {
@@ -24,12 +35,15 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
   const [emergencies, setEmergencies] = useState<any[]>([])
   const [monitors, setMonitors] = useState<any[]>([])
 
+  const centerLat = 40.7608
+  const centerLng = -111.8910
+
   useEffect(() => {
     fetchMarkers()
   }, [])
 
   const fetchMarkers = async () => {
-    const { data: t } = await supabase.from('tasks').select('*')
+    const { data: t } = await supabase.from('task_templates').select('*')
     const { data: e } = await supabase.from('emergency_buttons').select('*')
     const { data: m } = await supabase.from('monitors').select('*')
     if (t) setTasks(t)
@@ -45,7 +59,7 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
         if (!title) return
 
         if (markerType === 'task') {
-          await supabase.from('tasks').insert([{ title, lat, lng }])
+          await supabase.from('task_templates').insert([{ title, lat, lng }])
         } else if (markerType === 'emergency') {
           await supabase.from('emergency_buttons').insert([{ title, lat, lng }])
         } else if (markerType === 'monitor') {
@@ -63,30 +77,31 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col p-4">
-      <div className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800 mb-4">
+    <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col p-4">
+      <div className="flex flex-col sm:flex-row justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800 mb-4 gap-3">
         <div>
           <h2 className="text-lg font-black text-amber-500">📍 HOST MAP SETUP</h2>
           <p className="text-xs text-slate-400">Click anywhere on the map to drop the selected marker type.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
           <select
             value={markerType}
             onChange={(e: any) => setMarkerType(e.target.value)}
-            className="p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold"
+            className="p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-amber-500"
           >
-            <option value="task">🟢 Green Task</option>
-            <option value="emergency">🔴 Red Emergency</option>
+            <option value="task">🟢 Green Task Template</option>
+            <option value="emergency">🔴 Red Emergency Button</option>
             <option value="monitor">🔵 Blue Monitor</option>
           </select>
-          <button onClick={onClose} className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-bold">
+          <button onClick={onClose} className="px-4 py-2.5 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-bold transition">
             Done / Close
           </button>
         </div>
       </div>
 
-      <div className="flex-1 rounded-2xl overflow-hidden border border-slate-800 relative z-0">
-        <MapContainer center={[40.7608, -111.8910]} zoom={16} style={{ height: '100%', width: '100%' }}>
+      <div className="flex-1 rounded-3xl overflow-hidden border-2 border-slate-800 relative z-0 shadow-2xl">
+        <MapContainer center={[centerLat, centerLng]} zoom={18} style={{ height: '100%', width: '100%' }}>
+          <MapInvalidator />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <MapClickHandler />
 
@@ -94,9 +109,9 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
             <Marker key={t.id} position={[t.lat, t.lng]} icon={greenIcon}>
               <Popup>
                 <div className="text-black">
-                  <b>Task: {t.title}</b>
+                  <b>Task Template: {t.title}</b>
                   <br />
-                  <button onClick={() => deleteMarker('tasks', t.id)} className="text-red-600 font-bold text-xs mt-1">Delete</button>
+                  <button onClick={() => deleteMarker('task_templates', t.id)} className="text-red-600 font-bold text-xs mt-1 hover:underline">Delete</button>
                 </div>
               </Popup>
             </Marker>
@@ -108,7 +123,7 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
                 <div className="text-black">
                   <b>Emergency: {e.title}</b>
                   <br />
-                  <button onClick={() => deleteMarker('emergency_buttons', e.id)} className="text-red-600 font-bold text-xs mt-1">Delete</button>
+                  <button onClick={() => deleteMarker('emergency_buttons', e.id)} className="text-red-600 font-bold text-xs mt-1 hover:underline">Delete</button>
                 </div>
               </Popup>
             </Marker>
@@ -120,7 +135,7 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
                 <div className="text-black">
                   <b>Monitor: {m.title}</b>
                   <br />
-                  <button onClick={() => deleteMarker('monitors', m.id)} className="text-red-600 font-bold text-xs mt-1">Delete</button>
+                  <button onClick={() => deleteMarker('monitors', m.id)} className="text-red-600 font-bold text-xs mt-1 hover:underline">Delete</button>
                 </div>
               </Popup>
             </Marker>

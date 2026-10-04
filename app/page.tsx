@@ -69,23 +69,42 @@ export default function Home() {
     }
   }
 
+  const resetDatabase = async () => {
+    if (!confirm("Are you sure you want to wipe all players and reset the entire game?")) return
+    await supabase.from('players').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    await supabase.from('player_tasks').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    await supabase.from('game_state').update({ status: 'lobby' }).eq('id', 1)
+    setPlayer(null)
+  }
+
   const startGame = async () => {
     const { data: currentPlayers } = await supabase.from('players').select('*')
     if (!currentPlayers || currentPlayers.length === 0) return
 
+    const { data: templates } = await supabase.from('task_templates').select('*')
+    
+    // Shuffle players & assign roles
     const shuffled = [...currentPlayers].sort(() => 0.5 - Math.random())
     const count = Math.min(imposterCount, Math.max(1, shuffled.length - 1))
 
-    // Assign roles in Supabase database
     for (let i = 0; i < shuffled.length; i++) {
+      const p = shuffled[i]
       const assignedRole = i < count ? 'imposter' : 'crewmate'
-      await supabase
-        .from('players')
-        .update({ role: assignedRole })
-        .eq('id', shuffled[i].id)
+      await supabase.from('players').update({ role: assignedRole }).eq('id', p.id)
+
+      // If crewmate and templates exist, assign 5 individual personal tasks
+      if (assignedRole === 'crewmate' && templates && templates.length > 0) {
+        const shuffledTemplates = [...templates].sort(() => 0.5 - Math.random())
+        const assignedSubset = shuffledTemplates.slice(0, Math.min(5, shuffledTemplates.length))
+
+        for (const t of assignedSubset) {
+          await supabase.from('player_tasks').insert([
+            { player_id: p.id, title: t.title, lat: t.lat, lng: t.lng, is_completed: false }
+          ])
+        }
+      }
     }
 
-    // Flip game state to playing
     await supabase.from('game_state').update({ status: 'playing' }).eq('id', 1)
   }
 
@@ -159,6 +178,13 @@ export default function Home() {
                   <option value={3}>3 Imposters</option>
                 </select>
               </div>
+
+              <button
+                onClick={resetDatabase}
+                className="w-full py-3 bg-red-900/50 hover:bg-red-900 border border-red-700 rounded-xl font-bold text-xs uppercase tracking-wider transition text-red-200 mt-2"
+              >
+                🔥 WIPE & RESET ENTIRE DATABASE
+              </button>
 
               <button
                 onClick={() => setShowHostMap(true)}
