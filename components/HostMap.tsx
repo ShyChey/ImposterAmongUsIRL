@@ -1,131 +1,132 @@
-// @ts-nocheck
 'use client'
 import { useState, useEffect } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
 import { createClient } from '@/utils/supabase/client'
-import dynamic from 'next/dynamic'
 
-const MapContainer = dynamic(() => import('react-leaflet').then((mod) => mod.MapContainer), { ssr: false })
-const TileLayer = dynamic(() => import('react-leaflet').then((mod) => mod.TileLayer), { ssr: false })
-const Marker = dynamic(() => import('react-leaflet').then((mod) => mod.Marker), { ssr: false })
-const Popup = dynamic(() => import('react-leaflet').then((mod) => mod.Popup), { ssr: false })
-
-// Helper component to listen to map clicks using react-leaflet's hook
-function LocationPicker({ onMapClick }: { onMapClick: (e: any) => void }) {
-  const ReactLeaflet = require('react-leaflet')
-  ReactLeaflet.useMapEvents({
-    click: (e: any) => {
-      onMapClick(e)
-    },
+// Custom marker icons using colored SVGs or div icons
+const createTaskIcon = (color: string) =>
+  L.divIcon({
+    className: 'custom-icon',
+    html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.5);"></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
   })
-  return null
-}
+
+const greenIcon = createTaskIcon('#22c55e') // Tasks
+const redIcon = createTaskIcon('#ef4444')   // Emergency
+const blueIcon = createTaskIcon('#3b82f6')  // Monitors
 
 export default function HostMap({ onClose }: { onClose: () => void }) {
   const supabase = createClient()
+  const [markerType, setMarkerType] = useState<'task' | 'emergency' | 'monitor'>('task')
   const [tasks, setTasks] = useState<any[]>([])
-  const [emergencyButtons, setEmergencyButtons] = useState<any[]>([])
-  const [pinType, setPinType] = useState<'task' | 'emergency'>('task')
-  const [title, setTitle] = useState('')
-  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null)
-  
-  const centerLat = 40.7608 
-  const centerLng = -111.8910
+  const [emergencies, setEmergencies] = useState<any[]>([])
+  const [monitors, setMonitors] = useState<any[]>([])
 
   useEffect(() => {
-    fetchPins()
+    fetchMarkers()
   }, [])
 
-  const fetchPins = async () => {
-    const { data: tData } = await supabase.from('tasks').select('*')
-    if (tData) setTasks(tData)
-
-    const { data: eData } = await supabase.from('emergency_buttons').select('*')
-    if (eData) setEmergencyButtons(eData)
+  const fetchMarkers = async () => {
+    const { data: t } = await supabase.from('tasks').select('*')
+    const { data: e } = await supabase.from('emergency_buttons').select('*')
+    const { data: m } = await supabase.from('monitors').select('*')
+    if (t) setTasks(t)
+    if (e) setEmergencies(e)
+    if (m) setMonitors(m)
   }
 
-  const handleMapClick = (e: any) => {
-    setSelectedLocation({ lat: e.latlng.lat, lng: e.latlng.lng })
+  function MapClickHandler() {
+    useMapEvents({
+      async click(e) {
+        const { lat, lng } = e.latlng
+        const title = prompt(`Enter name for this ${markerType}:`)
+        if (!title) return
+
+        if (markerType === 'task') {
+          await supabase.from('tasks').insert([{ title, lat, lng }])
+        } else if (markerType === 'emergency') {
+          await supabase.from('emergency_buttons').insert([{ title, lat, lng }])
+        } else if (markerType === 'monitor') {
+          await supabase.from('monitors').insert([{ title, lat, lng }])
+        }
+        fetchMarkers()
+      },
+    })
+    return null
   }
 
-  const savePin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedLocation || !title) return
-
-    if (pinType === 'task') {
-      await supabase.from('tasks').insert([{ title, lat: selectedLocation.lat, lng: selectedLocation.lng, is_completed: false }])
-    } else {
-      await supabase.from('emergency_buttons').insert([{ title, lat: selectedLocation.lat, lng: selectedLocation.lng }])
-    }
-
-    setTitle('')
-    setSelectedLocation(null)
-    fetchPins()
+  const deleteMarker = async (table: string, id: string) => {
+    await supabase.from(table).delete().eq('id', id)
+    fetchMarkers()
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/95 flex flex-col p-4">
-      <div className="flex justify-between items-center bg-slate-900 p-4 rounded-t-2xl border border-slate-800">
-        <h2 className="text-xl font-black text-red-500">📍 HOST MAP SETUP</h2>
-        <button onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg font-bold text-sm">
-          Close Map
-        </button>
-      </div>
-
-      <div className="flex-1 w-full relative z-0">
-        {typeof window !== 'undefined' && (
-          <MapContainer 
-            center={[centerLat, centerLng]} 
-            zoom={17} 
-            style={{ height: '100%', width: '100%' }}
-          >
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            <LocationPicker onMapClick={handleMapClick} />
-            
-            {tasks.map((t) => (
-              <Marker key={`t-${t.id}`} position={[t.lat, t.lng]}>
-                <Popup><strong>Task:</strong> {t.title}</Popup>
-              </Marker>
-            ))}
-
-            {emergencyButtons.map((e) => (
-              <Marker key={`e-${e.id}`} position={[e.lat, e.lng]}>
-                <Popup>🚨 <strong>Emergency Button:</strong> {e.title}</Popup>
-              </Marker>
-            ))}
-
-            {selectedLocation && (
-              <Marker position={[selectedLocation.lat, selectedLocation.lng]}>
-                <Popup>Selected Pin Location</Popup>
-              </Marker>
-            )}
-          </MapContainer>
-        )}
-      </div>
-
-      {selectedLocation && (
-        <form onSubmit={savePin} className="bg-slate-900 p-4 border-t border-slate-800 flex flex-col sm:flex-row gap-4 items-center">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col p-4">
+      <div className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800 mb-4">
+        <div>
+          <h2 className="text-lg font-black text-amber-500">📍 HOST MAP SETUP</h2>
+          <p className="text-xs text-slate-400">Click anywhere on the map to drop the selected marker type.</p>
+        </div>
+        <div className="flex items-center gap-3">
           <select
-            value={pinType}
-            onChange={(e) => setPinType(e.target.value as any)}
-            className="p-3 rounded-lg bg-slate-800 border border-slate-700 text-white font-bold"
+            value={markerType}
+            onChange={(e: any) => setMarkerType(e.target.value)}
+            className="p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold"
           >
-            <option value="task">Regular Task Pin</option>
-            <option value="emergency">🚨 Emergency Button Pin</option>
+            <option value="task">🟢 Green Task</option>
+            <option value="emergency">🔴 Red Emergency</option>
+            <option value="monitor">🔵 Blue Monitor</option>
           </select>
-
-          <input
-            type="text"
-            placeholder={pinType === 'task' ? "Task Name (e.g. Fix Wires)" : "Button Name (e.g. Cafe Emergency)"}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="flex-1 w-full p-3 rounded-lg bg-slate-800 border border-slate-700 text-white"
-            required
-          />
-          <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-bold">
-            Save Pin
+          <button onClick={onClose} className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-bold">
+            Done / Close
           </button>
-        </form>
-      )}
+        </div>
+      </div>
+
+      <div className="flex-1 rounded-2xl overflow-hidden border border-slate-800 relative z-0">
+        <MapContainer center={[40.7608, -111.8910]} zoom={16} style={{ height: '100%', width: '100%' }}>
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <MapClickHandler />
+
+          {tasks.map((t) => (
+            <Marker key={t.id} position={[t.lat, t.lng]} icon={greenIcon}>
+              <Popup>
+                <div className="text-black">
+                  <b>Task: {t.title}</b>
+                  <br />
+                  <button onClick={() => deleteMarker('tasks', t.id)} className="text-red-600 font-bold text-xs mt-1">Delete</button>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
+          {emergencies.map((e) => (
+            <Marker key={e.id} position={[e.lat, e.lng]} icon={redIcon}>
+              <Popup>
+                <div className="text-black">
+                  <b>Emergency: {e.title}</b>
+                  <br />
+                  <button onClick={() => deleteMarker('emergency_buttons', e.id)} className="text-red-600 font-bold text-xs mt-1">Delete</button>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
+          {monitors.map((m) => (
+            <Marker key={m.id} position={[m.lat, m.lng]} icon={blueIcon}>
+              <Popup>
+                <div className="text-black">
+                  <b>Monitor: {m.title}</b>
+                  <br />
+                  <button onClick={() => deleteMarker('monitors', m.id)} className="text-red-600 font-bold text-xs mt-1">Delete</button>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
+      </div>
     </div>
   )
 }
