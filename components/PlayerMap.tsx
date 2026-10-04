@@ -4,6 +4,19 @@ import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import { createClient } from '@/utils/supabase/client'
+import { useMap } from 'react-leaflet'
+
+// Helper component to force Leaflet to recalculate size on mount
+function MapInvalidator() {
+  const map = useMap()
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      map.invalidateSize()
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [map])
+  return null
+}
 
 const createIcon = (color: string) =>
   L.divIcon({
@@ -43,8 +56,8 @@ export default function PlayerMap({ player }: { player: any }) {
   const [nearMonitor, setNearMonitor] = useState(false)
 
   // Venue center & locked bounds (~500 meters restriction zone)
-  const centerLat = 40.7608
-  const centerLng = -111.8910
+  const centerLat = 40.766188
+  const centerLng = -111.86675
   const venueBounds = [
     [centerLat - 0.005, centerLng - 0.005], 
     [centerLat + 0.005, centerLng + 0.005]
@@ -155,6 +168,7 @@ export default function PlayerMap({ player }: { player: any }) {
           zoomControl={false}
           style={{ height: '100%', width: '100%' }}
         >
+          <MapInvalidator />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
           {/* Render Self */}
