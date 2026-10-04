@@ -8,6 +8,17 @@ const TileLayer = dynamic(() => import('react-leaflet').then((mod) => mod.TileLa
 const Marker = dynamic(() => import('react-leaflet').then((mod) => mod.Marker), { ssr: false })
 const Popup = dynamic(() => import('react-leaflet').then((mod) => mod.Popup), { ssr: false })
 
+// Helper component to listen to map clicks using react-leaflet's hook
+function LocationPicker({ onMapClick }: { onMapClick: (e: any) => void }) {
+  const ReactLeaflet = require('react-leaflet')
+  ReactLeaflet.useMapEvents({
+    click: (e: any) => {
+      onMapClick(e)
+    },
+  })
+  return null
+}
+
 export default function HostMap({ onClose }: { onClose: () => void }) {
   const supabase = createClient()
   const [tasks, setTasks] = useState<any[]>([])
@@ -65,9 +76,9 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
             center={[centerLat, centerLng]} 
             zoom={17} 
             style={{ height: '100%', width: '100%' }}
-            onClick={handleMapClick}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <LocationPicker onMapClick={handleMapClick} />
             
             {tasks.map((t) => (
               <Marker key={`t-${t.id}`} position={[t.lat, t.lng]}>
