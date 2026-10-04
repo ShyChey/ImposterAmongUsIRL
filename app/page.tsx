@@ -1,8 +1,11 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import HostMap from '@/components/HostMap'
-import PlayerMap from '@/components/PlayerMap'
+import dynamic from 'next/dynamic'
+
+// Dynamically import map components so they never load during SSR / build time
+const HostMap = dynamic(() => import('@/components/HostMap'), { ssr: false })
+const PlayerMap = dynamic(() => import('@/components/PlayerMap'), { ssr: false })
 
 export default function Home() {
   const supabase = createClient()
