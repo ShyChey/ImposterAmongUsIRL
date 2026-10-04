@@ -66,20 +66,26 @@ export default function Home() {
   }
 
   const startGame = async () => {
-    const players = [...playersList]
-    if (players.length === 0) return
+    // Fetch latest fresh players list directly from database to ensure no stale state
+    const { data: currentPlayers } = await supabase.from('players').select('*')
+    if (!currentPlayers || currentPlayers.length === 0) return
 
     // Shuffle players randomly
-    const shuffled = players.sort(() => 0.5 - Math.random())
+    const shuffled = [...currentPlayers].sort(() => 0.5 - Math.random())
     
-    // Ensure imposter count is valid (at least 1, and less than total players)
-    const count = Math.min(imposterCount, Math.max(1, players.length - 1))
+    // Ensure imposter count is valid
+    const count = Math.min(imposterCount, Math.max(1, shuffled.length - 1))
 
+    // Assign roles in Supabase
     for (let i = 0; i < shuffled.length; i++) {
       const assignedRole = i < count ? 'imposter' : 'crewmate'
-      await supabase.from('players').update({ role: assignedRole }).eq('id', shuffled[i].id)
+      await supabase
+        .from('players')
+        .update({ role: assignedRole })
+        .eq('id', shuffled[i].id)
     }
 
+    // Flip global game state to playing
     await supabase.from('game_state').update({ status: 'playing' }).eq('id', 1)
   }
 
