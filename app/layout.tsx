@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import './globals.css'
 
 export const metadata: Metadata = {
   title: 'IRL Among Us',
@@ -14,7 +13,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Tailwind CSS Play CDN for zero-config compilation */}
+        {/* Tailwind CSS Play CDN */}
         <script src="https://cdn.tailwindcss.com"></script>
         {/* Leaflet CSS CDN */}
         <link 
