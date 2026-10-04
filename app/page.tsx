@@ -11,6 +11,7 @@ export default function Home() {
   const [gameState, setGameState] = useState<any>(null)
   const [playersList, setPlayersList] = useState<any[]>([])
   const [showHostMap, setShowHostMap] = useState(false)
+  const [imposterCount, setImposterCount] = useState(1)
 
   useEffect(() => {
     fetchGameState()
@@ -33,7 +34,6 @@ export default function Home() {
   const fetchGameState = async () => {
     let { data } = await supabase.from('game_state').select('*').eq('id', 1).single()
     if (!data) {
-      // Initialize game state if it doesn't exist
       const { data: newData } = await supabase.from('game_state').insert([{ id: 1, status: 'lobby' }]).select().single()
       data = newData
     }
@@ -50,12 +50,11 @@ export default function Home() {
     e.preventDefault()
     if (!nameInput.trim()) return
 
-    // First player to join becomes the host if no host is set
+    // First player to join becomes host if no players exist
     const isFirstPlayer = playersList.length === 0
-    const role = 'crewmate' // Default role until game starts
 
     const { data, error } = await supabase.from('players').insert([
-      { name: nameInput, role, status: 'alive', is_host: isFirstPlayer }
+      { name: nameInput, role: null, status: 'alive', is_host: isFirstPlayer }
     ]).select().single()
 
     if (data) {
@@ -64,30 +63,30 @@ export default function Home() {
   }
 
   const startGame = async () => {
-    // Randomly pick one imposter, make everyone else crewmates
-    const updatedPlayers = [...playersList]
-    if (updatedPlayers.length === 0) return
+    const players = [...playersList]
+    if (players.length === 0) return
 
-    const imposterIndex = Math.floor(Math.random() * updatedPlayers.length)
+    // Shuffle players randomly
+    const shuffled = players.sort(() => 0.5 - Math.random())
     
-    for (let i = 0; i < updatedPlayers.length; i++) {
-      const assignedRole = i === imposterIndex ? 'imposter' : 'crewmate'
-      await supabase.from('players').update({ role: assignedRole }).eq('id', updatedPlayers[i].id)
+    // Ensure imposter count is valid (at least 1, and less than total players)
+    const count = Math.min(imposterCount, Math.max(1, players.length - 1))
+
+    for (let i = 0; i < shuffled.length; i++) {
+      const assignedRole = i < count ? 'imposter' : 'crewmate'
+      await supabase.from('players').update({ role: assignedRole }).eq('id', shuffled[i].id)
     }
 
-    // Transition game state to playing
     await supabase.from('game_state').update({ status: 'playing' }).eq('id', 1)
   }
 
   const restartGame = async () => {
-  // 1. Flip game state back to lobby
-  await supabase.from('game_state').update({ status: 'lobby' }).eq('id', 1)
+    // Reset players back to unassigned roles and flip state to lobby
+    await supabase.from('players').update({ role: null, status: 'alive' }).neq('id', '00000000-0000-0000-0000-000000000000')
+    await supabase.from('game_state').update({ status: 'lobby' }).eq('id', 1)
+  }
 
-  // 2. Reset all players to default crewmate status
-  await supabase.from('players').update({ role: 'crewmate', status: 'alive' }).neq('id', '00000000-0000-0000-0000-000000000000')
-}
-
-  // 1. Login Screen if player hasn't joined yet
+  // 1. Login Screen
   if (!player) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-950 text-white">
@@ -121,7 +120,7 @@ export default function Home() {
         <div className="w-full max-w-xl bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6 mt-10">
           <div className="text-center space-y-2">
             <h1 className="text-2xl font-black text-amber-500">🎮 GAME LOBBY</h1>
-            <p className="text-sm text-slate-400">Waiting for the host to set up the map and start the game...</p>
+            <p className="text-sm text-slate-400">Waiting for the host to start the game...</p>
           </div>
 
           <div className="space-y-3">
@@ -137,28 +136,38 @@ export default function Home() {
           </div>
 
           {/* Host Controls */}
-          {player.is_host && (
-            <div className="space-y-3 pt-4 border-t border-slate-800">
+          {player.is_host ? (
+            <div className="space-y-4 pt-4 border-t border-slate-800">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Number of Imposters</label>
+                <select
+                  value={imposterCount}
+                  onChange={(e) => setImposterCount(Number(e.target.value))}
+                  className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-white font-bold focus:outline-none focus:border-amber-500"
+                >
+                  <option value={1}>1 Imposter</option>
+                  <option value={2}>2 Imposters</option>
+                  <option value={3}>3 Imposters</option>
+                </select>
+              </div>
+
               <button
                 onClick={() => setShowHostMap(true)}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold tracking-wide"
+                className="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold tracking-wide transition"
               >
                 📍 Setup Task & Emergency Pins (Host Map)
               </button>
 
               <button
-                onClick={restartGame}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-xl font-bold text-xs uppercase tracking-wider transition shadow"
-              >
-              🔄 Restart Game
-              </button>
-
-              <button
                 onClick={startGame}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-black text-lg tracking-wider shadow-lg"
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-black text-lg tracking-wider shadow-lg transition"
               >
                 🚀 START GAME
               </button>
+            </div>
+          ) : (
+            <div className="text-center p-4 bg-slate-950 rounded-xl border border-slate-800 text-sm text-slate-400">
+              Waiting for host to configure settings and launch the match...
             </div>
           )}
         </div>
@@ -175,10 +184,22 @@ export default function Home() {
         <header className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800">
           <div>
             <h1 className="font-black text-lg">{player.name}</h1>
-            <p className="text-xs text-slate-400 uppercase tracking-wider">Role: <span className={player.role === 'imposter' ? 'text-red-500 font-bold' : 'text-emerald-400 font-bold'}>{player.role}</span></p>
+            <p className="text-xs text-slate-400 uppercase tracking-wider">
+              Role: <span className={player.role === 'imposter' ? 'text-red-500 font-bold' : 'text-emerald-400 font-bold'}>{player.role || 'Unassigned'}</span>
+            </p>
           </div>
-          <div className="px-3 py-1 bg-slate-800 rounded-full text-xs font-bold uppercase">
-            Status: {player.status}
+          <div className="flex items-center gap-3">
+            <div className="px-3 py-1 bg-slate-800 rounded-full text-xs font-bold uppercase">
+              {player.status}
+            </div>
+            {player.is_host && (
+              <button
+                onClick={restartGame}
+                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded-lg font-bold text-xs uppercase tracking-wider transition"
+              >
+                🔄 Restart
+              </button>
+            )}
           </div>
         </header>
 
