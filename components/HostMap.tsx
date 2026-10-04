@@ -35,8 +35,8 @@ export default function HostMap({ onClose }: { onClose: () => void }) {
   const [emergencies, setEmergencies] = useState<any[]>([])
   const [monitors, setMonitors] = useState<any[]>([])
 
-  const centerLat = 40.7608
-  const centerLng = -111.8910
+  const centerLat = 40.766188
+  const centerLng = -111.866754
 
   useEffect(() => {
     fetchMarkers()

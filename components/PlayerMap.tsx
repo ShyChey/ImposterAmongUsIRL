@@ -50,8 +50,8 @@ export default function PlayerMap({ player }: { player: any }) {
   const [monitors, setMonitors] = useState<any[]>([])
   const [nearMonitor, setNearMonitor] = useState(false)
 
-  const centerLat = 40.7608
-  const centerLng = -111.8910
+  const centerLat = 40.766188
+  const centerLng = -111.866754
   const venueBounds = [
     [centerLat - 0.008, centerLng - 0.008], 
     [centerLat + 0.008, centerLng + 0.008]
