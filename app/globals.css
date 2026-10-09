@@ -1,0 +1,35 @@
+@keyframes drift-stars {
+  from { background-position: 0 0, 0 0, 0 0; }
+  to { background-position: 32px -24px, -18px 30px, 14px 18px; }
+}
+
+.space-field {
+  background-color: #030407;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,.9) 0 1px, transparent 2px),
+    radial-gradient(circle, rgba(203,226,255,.7) 0 1.5px, transparent 3px),
+    radial-gradient(circle, rgba(255,255,255,.45) 0 1px, transparent 2.5px);
+  background-size: 173px 151px, 251px 229px, 317px 281px;
+  background-position: 15px 17px, 87px 58px, 145px 119px;
+  animation: drift-stars 30s linear infinite;
+}
+
+body {
+  min-height: 100vh;
+  background-color: #030407;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,.9) 0 1px, transparent 2px),
+    radial-gradient(circle, rgba(203,226,255,.7) 0 1.5px, transparent 3px),
+    radial-gradient(circle, rgba(255,255,255,.45) 0 1px, transparent 2.5px);
+  background-size: 173px 151px, 251px 229px, 317px 281px;
+}
+
+main.bg-slate-950 {
+  background-color: transparent !important;
+}
+
+.space-panel {
+  border: 2px solid #536170;
+  background: linear-gradient(145deg, rgba(28,35,45,.98), rgba(8,12,18,.98));
+  box-shadow: 0 0 0 3px rgba(0,0,0,.75), 0 18px 45px rgba(0,0,0,.65);
+}

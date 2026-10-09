@@ -14,13 +14,6 @@ export default function TaskMinigame({ task, onComplete, onCancel }: { task: any
   const sequence = useMemo(() => [2, 4, 1, 3], [])
   const done = () => setTimeout(onComplete, 250)
   const type = task.title
-  const taskArt: Record<string, string> = {
-    'Fix Wires': '/among-us/wires-panel.png',
-    'Swipe Card': '/among-us/card-slide.png',
-    'Empty Trash': '/among-us/empty-garbage.png',
-    'Prime Shields': '/among-us/shields.png',
-    'Enter Code': '/among-us/keypad.png',
-  }
   const tapSequence = (n: number) => {
     if (n !== sequence[step]) return setStep(0)
     if (step === sequence.length - 1) return done()
@@ -32,12 +25,11 @@ export default function TaskMinigame({ task, onComplete, onCancel }: { task: any
     if (next.length === 4) done()
   }
 
-  return <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-[#060b14] p-5" style={{ backgroundImage: 'radial-gradient(circle at 20% 10%, #17335d 0, transparent 25%), radial-gradient(circle at 80% 80%, #2a123f 0, transparent 28%)' }}>
+  return <div className="space-field fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto p-5">
     <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border-4 border-slate-500 bg-slate-900 p-6 text-center shadow-[0_0_0_5px_#172234,0_25px_80px_rgba(0,0,0,.85)] space-y-5">
       <div className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-cyan-300 via-white to-cyan-300" />
       <p className="text-xs font-black uppercase tracking-[.25em] text-cyan-300">Task console</p>
       <h2 className="text-2xl font-black">{type}</h2>
-      {taskArt[type] && <img src={taskArt[type]} alt="" className="pointer-events-none mx-auto max-h-44 w-full object-contain" />}
       {type === 'Swipe Card' && <><p className="text-slate-300">Swipe the card smoothly.</p><button onClick={done} className="w-full rounded-xl border-2 border-amber-100 bg-gradient-to-b from-amber-200 to-amber-500 py-5 font-black text-slate-950 shadow-[0_5px_0_#7c4a03] active:translate-y-1">SWIPE CARD</button></>}
       {type === 'Fix Wires' && <><p className="text-slate-300">Tap the colored wires in order.</p><div className="grid grid-cols-4 gap-2">{['bg-red-500','bg-blue-500','bg-amber-400','bg-emerald-500'].map((c, i) => <button key={c} onClick={() => tapSequence(i + 1)} className={`${c} h-14 rounded-lg border-2 border-white/70 ${step === i ? 'ring-4 ring-cyan-200' : ''}`} />)}</div><p className="text-xs text-slate-400">Circuit progress: {step}/4</p></>}
       {type === 'Calibrate Engine' && <><p className="text-slate-300">Stop the dial in the green zone.</p><button onClick={done} className="h-28 w-28 rounded-full border-8 border-emerald-500 bg-slate-800 font-black animate-pulse">CALIBRATE</button></>}
