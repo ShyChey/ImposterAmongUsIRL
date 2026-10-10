@@ -22,10 +22,10 @@ export default function PlayerMap({ player, gameState, onEmergency }: { player:a
   const within=(x:any, feet:number)=>coords && distance(coords.lat,coords.lng,x.lat,x.lng)<=feet
   const nearMonitor=monitors.some(m=>within(m,20)), nearEmergency=emergencies.find(e=>within(e,20)), nearbyTask=tasks.find(t=>!t.is_completed&&within(t,20))
   const nearbyVictims=players.filter(p=>p.id!==player.id&&p.status==='alive'&&p.role==='crewmate'&&within(p,10))
-  const nearbyBody=players.find(p=>p.id!==player.id&&p.status==='dead'&&p.death_kind==='killed'&&p.lat&&p.lng&&within(p,20))
+  const nearbyBody=players.find(p=>p.id!==player.id&&p.status==='dead'&&p.death_kind==='killed'&&!p.body_reported_at&&p.lat&&p.lng&&within(p,20))
   const killReady=player.kill_available_at?new Date(player.kill_available_at).getTime()<=Date.now():true
   const finish=async()=>{if(!activeTask||player.role!=='crewmate'||gameState?.status!=='playing'){setActiveTask(null);return}await supabase.from('player_tasks').update({is_completed:true}).eq('id',activeTask.id);setActiveTask(null);refresh()}
-  const kill=async()=>{if(player.role!=='imposter'||!killReady||gameState?.status!=='playing'||!nearbyVictims.length)return;const victim=nearbyVictims[Math.floor(Math.random()*nearbyVictims.length)];const now=new Date();await supabase.from('players').update({status:'dead',death_kind:'killed',killed_at:now.toISOString()}).eq('id',victim.id);await supabase.from('players').update({kill_available_at:new Date(now.getTime()+90000).toISOString()}).eq('id',player.id);refresh()}
+  const kill=async()=>{if(player.role!=='imposter'||!killReady||gameState?.status!=='playing'||!nearbyVictims.length)return;const victim=nearbyVictims[Math.floor(Math.random()*nearbyVictims.length)];const now=new Date();await supabase.from('players').update({status:'dead',death_kind:'killed',killed_at:now.toISOString(),body_reported_at:null}).eq('id',victim.id);await supabase.from('players').update({kill_available_at:new Date(now.getTime()+90000).toISOString()}).eq('id',player.id);refresh()}
   useEffect(()=>{if(player.death_kind==='killed'&&player.killed_at)setDeathDismissed(false)},[player.killed_at])
   const gamePaused=gameState?.status!=='playing'
   const livingActionsPaused=gamePaused || player.status!=='alive'
@@ -53,7 +53,7 @@ export default function PlayerMap({ player, gameState, onEmergency }: { player:a
     <div className="aspect-square w-full overflow-hidden rounded-3xl border-2 border-slate-800"><MapContainer center={coords?[coords.lat,coords.lng]:center as any} zoom={17} minZoom={16} maxZoom={19} maxBounds={venueBounds} maxBoundsViscosity={1} style={{height:'100%',width:'100%'}} dragging touchZoom scrollWheelZoom zoomControl={false}><MapInvalidator/><FollowPlayer coords={coords}/><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
       {coords&&<Marker position={[coords.lat,coords.lng]} icon={selfIcon}><Popup>You ({player.name})</Popup></Marker>}
       {monitorActive&&players.filter(p=>p.id!==player.id&&p.status==='alive'&&p.lat&&p.lng).map(p=><Marker key={p.id} position={[p.lat,p.lng]} icon={playerIcon}><Popup>{p.name}</Popup></Marker>)}
-      {players.filter(p=>p.status==='dead'&&p.death_kind==='killed'&&p.lat&&p.lng).map(p=><Marker key={`body-${p.id}`} position={[p.lat,p.lng]} icon={bodyIcon}><Popup>☠ Body of {p.name}</Popup></Marker>)}
+      {players.filter(p=>p.status==='dead'&&p.death_kind==='killed'&&!p.body_reported_at&&p.lat&&p.lng).map(p=><Marker key={`body-${p.id}`} position={[p.lat,p.lng]} icon={bodyIcon}><Popup>☠ Body of {p.name}</Popup></Marker>)}
       {emergencies.map(e=><Marker key={e.id} position={[e.lat,e.lng]} icon={redIcon}><Popup>🚨 {e.title}</Popup></Marker>)}
       {monitors.map(m=><Marker key={m.id} position={[m.lat,m.lng]} icon={blueIcon}><Popup>🔵 {m.title}</Popup></Marker>)}
       {player.role==='crewmate'&&tasks.filter(t=>!t.is_completed).map(t=><Marker key={t.id} position={[t.lat,t.lng]} icon={greenIcon}><Popup>🟢 Your task: {t.title}</Popup></Marker>)}
